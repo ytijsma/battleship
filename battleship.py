@@ -1,5 +1,6 @@
 import sys
-from PyQt4 import QtGui
+import random
+from PyQt4 import QtGui, QtCore
 
 class Ship():
 	def __init__(self, length, btn):
@@ -87,30 +88,33 @@ class GridButton(QtGui.QPushButton):
 		self.clicked.connect(self.clickEvent)
 		
 	def update(self):
-		if(self.ship != None):
+		if(self.showShip and self.ship != None):
 			self.setText(str(self.ship))
 		else:
 			self.setText(" ")
 			
 		if(self.hit):
-			p = self.palette()
-			p.setColor(self.backgroundRole(), Qt.Red)
-			self.setPalette(p)
+			if(self.ship != None):
+				self.setText(str(self.ship))
+			else:
+				self.setText("!")
 		
 	def setShip(self, ship):
 		self.ship = ship
 		self.update()
 		
 	def clickEvent(self, event):
-		if(self.grid.bs.currentShip == None):
-			return
+		print("Clickety")
+		print(str(not self.grid.bs.settingUp) + ", " + str(self.grid.target))
 		
-		if(self.grid.bs.currentShip.placeIn(self.grid, self.x, self.y, self.grid.bs.orientVert)):
-			self.grid.bs.currentShip = None
-			
-		if(not self.grid.bs.settingUp and self.grid.target):
+		if((not self.grid.bs.settingUp) and self.grid.target):
 			self.hit = True
-			self.update()
+			
+		if(self.grid.bs.currentShip != None):
+			if(self.grid.bs.currentShip.placeIn(self.grid, self.x, self.y, self.grid.bs.orientVert)):
+				self.grid.bs.currentShip = None
+		
+		self.update()
 		
 class ShipGrid(QtGui.QWidget):
 	ROWS = 10
@@ -162,6 +166,7 @@ class Battleship(QtGui.QWidget):
 		self.orientVert = False
 		self.settingUp = True
 		self.shipsUnplaced = len(self.SHIPLENGTHS)
+		self.targetGrid = None
 		self.initUI()
 
 	def initUI(self):
@@ -190,6 +195,22 @@ class Battleship(QtGui.QWidget):
 		
 		self.show()
 		
+	def setupShips(self):
+		if(self.targetGrid != None):
+			return
+			
+		self.targetGrid = TargetGrid(self)
+		shipsToPlace = len(self.SHIPLENGTHS)
+		while(shipsToPlace > 0):
+			randX = random.randint(0, 10)
+			randY = random.randint(0, 10)
+			randV = random.randint(0, 1) == 1	
+			ship = ShipButton(self, self.SHIPLENGTHS[shipsToPlace - 1])
+			ship.showShip = False
+			ship = ship.ship # a ship shipping ship shipping shipping ships
+			if(ship.placeIn(self.targetGrid, randX, randY, randV)):
+				shipsToPlace -= 1
+		
 	def update(self):
 		self.shipsUnplaced = len(self.SHIPLENGTHS)
 		for btn in self.shipBtns:
@@ -201,7 +222,8 @@ class Battleship(QtGui.QWidget):
 			self.settingUp = False
 			
 		if(not self.settingUp):
-			self.grid.addWidget(TargetGrid(self), 2, 1)
+			self.grid.addWidget(self.targetGrid, 2, 1)
+			self.setupShips()
 		
 	def clickOrientBtn(self):
 		self.orientVert = not self.orientVert
