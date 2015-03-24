@@ -194,10 +194,10 @@ class GridButton(QtGui.QPushButton):
 					self.setText(str(self.cell))
 				else:
 					# Hit in user-grid
-					self.setText(str(self.cell) + "!")
+					self.setText(str(self.cell) + "#")
 			else:
 				# In either grid, but no ship
-				self.setText("!")
+				self.setText("#")
 		else:
 			# In user grid, but not hit
 			if(not self.isTarget):
@@ -239,7 +239,7 @@ class ButtonGrid(QtGui.QWidget):
 			self.grid.addObs(btn)
 			self.layout.addWidget(btn, btn.cell.x, btn.cell.y)
 			
-class AI():
+class DumbAI():
 	"""Artificial: yes. Intelligent: not so much."""
 	def __init__(self, bs):
 		self.bs = bs
@@ -263,14 +263,70 @@ class AI():
 			if(self.bs.targetGrid.placeShip(self.ships[shipsToPlace - 1], x, y, vert)):
 				shipsToPlace -= 1
 				
-	def fire(self):
-		"""Fire at the user. Poor user..."""
+	def randomCell(self):
 		x = random.randint(0, self.bs.COLS - 1)
 		y = random.randint(0, self.bs.ROWS - 1)
 		
-		while(not self.bs.userGrid.fireAt(x, y)):
-			x = random.randint(0, self.bs.COLS - 1)
-			y = random.randint(0, self.bs.ROWS - 1)
+		return self.bs.userGrid.matrix[y][x]
+				
+	def fire(self):
+		"""Fire at the user. Poor user..."""
+		cell = self.randomCell()
+		
+		while(not cell.fireAt()):
+			cell = self.randomCell()
+			
+		return cell
+			
+class SmartAI(DumbAI):
+	"""We'll see about that."""
+	def __init__(self, bs):
+		super(SmartAI, self).__init__(bs)
+		self.lastCell = None
+		
+	def placeShips(self):
+		super(SmartAI, self).placeShips()
+		print("I'm smart!")
+		
+	def fire(self):
+		"""Slightly smarter than DumbAI: remember the cell last fired
+		at if that was a hit and fire around it. Otherwise fire at
+		random."""
+		if(self.lastCell == None):
+			cell = super(SmartAI, self).fire()
+			
+			# We just hit a Ship, but not sunk it
+			if(cell.ship != None and cell.ship.health > 0):
+				self.lastCell = cell
+		else:
+			candidates = []
+			x = self.lastCell.x
+			y = self.lastCell.y
+			if(x - 1 >= 0):
+				candidates.append(self.bs.userGrid.matrix[y][x - 1])
+			if(x + 1 < self.bs.userGrid.cols - 1):
+				candidates.append(self.bs.userGrid.matrix[y][x + 1])
+			if(y - 1 >= 0):
+				candidates.append(self.bs.userGrid.matrix[y - 1][x])
+			if(y + 1 < self.bs.userGrid.rows - 1):
+				candidates.append(self.bs.userGrid.matrix[y + 1][x])
+				
+			# filter out scorched ones
+			candidates = [cell for cell in candidates if not cell.scorched]
+			
+			# no smart candidates: just fire random again
+			if(len(candidates) == 0):
+				self.lastCell = None
+				return self.fire()
+				
+			# pick one at random
+			cell = random.choice(candidates)
+			cell.fireAt()
+			
+			# we know the cell is scorched
+			if(cell.ship != None and cell.ship.health > 0):
+				self.lastCell = cell
+			# otherwise leave it at the previous and try another one next turn
 
 class Battleship(QtGui.QWidget):
 	"""The main window & controller for the game (which you just lost!)."""
@@ -297,8 +353,9 @@ class Battleship(QtGui.QWidget):
 		self.userBtnGrid = ButtonGrid(self, self.userGrid, False)
 		self.targetBtnGrid = ButtonGrid(self, self.targetGrid, True)
 		
-		self.ai = AI(self)
+		self.smartAI = False
 		self.aisTurn = False
+		self.ai = None
 		
 		self.makeShips()
 		self.initGUI()
@@ -338,9 +395,12 @@ class Battleship(QtGui.QWidget):
 		self.msgLabel = QtGui.QLabel("Place your Battleships up there ↑")
 		
 		self.ownShipsLabel = QtGui.QLabel("Own ships: " + str(len(self.ships)))
-		self.aiShipsLabel = QtGui.QLabel("Enemy ships: " + str(len(self.ai.ships)))
+		self.aiShipsLabel = QtGui.QLabel("Enemy ships: 0")
 		self.scoreGrid.addWidget(self.ownShipsLabel, 1, 1)
 		self.scoreGrid.addWidget(self.aiShipsLabel, 2, 1)
+		self.aiBtn = QtGui.QPushButton("AI: Dumb")
+		self.aiBtn.clicked.connect(self.switchAI)
+		self.scoreGrid.addWidget(self.aiBtn, 3, 1)
 		
 		uiGrid.addWidget(self.userBtnGrid, 1, 1)
 		uiGrid.addWidget(self.setUpShipBtns(), 1, 2)
@@ -377,6 +437,9 @@ class Battleship(QtGui.QWidget):
 		
 		if(self.shipsUnplaced == 0):
 			self.orientBtn.setEnabled(False)
+			self.aiBtn.setEnabled(False)
+			
+			self.ai = SmartAI(self) if self.smartAI else DumbAI(self)
 			self.ai.placeShips()
 			self.gameMode = self.MODE_FIRING
 	
@@ -417,7 +480,7 @@ class Battleship(QtGui.QWidget):
 		if(self.gameMode == self.MODE_GAMEOVER):
 			resetBtn = QtGui.QPushButton("Restart")
 			resetBtn.clicked.connect(self.reset)
-			self.scoreGrid.addWidget(resetBtn, 3, 1)
+			self.scoreGrid.addWidget(resetBtn, 4, 1)
 			
 	def reset(self):
 		"""Make a new game."""
@@ -429,6 +492,10 @@ class Battleship(QtGui.QWidget):
 		"""Switch ship placement orientation."""
 		self.orientVert = not self.orientVert
 		self.orientBtn.setText("Vertical" if self.orientVert else "Horizontal")
+		
+	def switchAI(self):
+		self.smartAI = not self.smartAI
+		self.aiBtn.setText("AI: Smart" if self.smartAI else "AI: Dumb")
 		
 def main():
 	app = QtGui.QApplication(sys.argv)
