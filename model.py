@@ -99,7 +99,7 @@ class Grid(Observable):
 				
 		# Tell the Ship it's been placed
 		ship.place()
-		self.update(ship)
+		self.update(self)
 		return True
 		
 	def fireAt(self, x, y):
@@ -141,6 +141,7 @@ class Ship(Observable):
 		already sunk. Returns whether it has any health left."""
 		self.health -= 1
 		
+		self.update(self)
 		return self.health != 0	
 
 	def __str__(self):

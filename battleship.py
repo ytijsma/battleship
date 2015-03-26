@@ -21,7 +21,7 @@ class ShipButton(QtGui.QPushButton):
 		else:
 			self.setEnabled(True)
 			
-		self.bs.update()
+		self.bs.update(self, ship)
 	
 	def clickEvent(self, event):
 		"""Selects the Ship this button belongs to."""
@@ -189,6 +189,8 @@ class Battleship(QtGui.QWidget):
 		if(self.aisTurn):
 			self.aisTurn = False
 			self.ai.fire()
+		else:
+			self.msgLabel.setText("Fire your missiles down there ↓")
 			
 	def userFire(self, cell):
 		"""User has clicked a GridButton."""
@@ -196,9 +198,9 @@ class Battleship(QtGui.QWidget):
 			self.msgLabel.setText("You already fired here, choose another target")
 		else:
 			self.aisTurn = True
-			self.update()
+			self.update(self, None)
 		
-	def setUpdate(self):
+	def setUpdate(self, obs, arg):
 		"""User has placed a Ship."""
 		unplaced = len(self.WORDS)
 		for s in self.ships:
@@ -216,7 +218,6 @@ class Battleship(QtGui.QWidget):
 			self.ai = SmartAI(*params) if self.smartAI else DumbAI(*params)
 			self.ai.placeShips()
 			
-			self.msgLabel.setText("Fire your missiles down there ↓")
 			self.gameMode = self.MODE_FIRING
 	
 	def livingShips(self, ships):
@@ -228,7 +229,7 @@ class Battleship(QtGui.QWidget):
 				
 		return shipsAlive
 	
-	def fireUpdate(self):
+	def fireUpdate(self, obs, arg):
 		"""Someone has fired a missile."""
 		self.turn()
 		
@@ -245,13 +246,13 @@ class Battleship(QtGui.QWidget):
 			self.msgLabel.setText("You win!")
 			self.gameMode = self.MODE_GAMEOVER
 		
-	def update(self):
+	def update(self, obs, arg):
 		"""Some update has happened."""
 		if(self.gameMode == self.MODE_SETUP):
-			self.setUpdate()
+			self.setUpdate(obs, arg)
 			
 		if(self.gameMode == self.MODE_FIRING):
-			self.fireUpdate()
+			self.fireUpdate(obs, arg)
 			
 		if(self.gameMode == self.MODE_GAMEOVER):
 			resetBtn = QtGui.QPushButton("Restart")
