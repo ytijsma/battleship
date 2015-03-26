@@ -2,151 +2,8 @@ import sys
 import random
 from PyQt4 import QtGui, QtCore
 
-class Observable():
-	"""Implements the Observer pattern. Keeps a list of observers and
-	calls their update() method when its update() is fired."""
-	def __init__(self):
-		self.obs = []
-			
-	def addObs(self, obs):
-		"""Adds the observer."""
-		self.obs.append(obs)
-		
-	def delObs(self, obs):
-		"""Removes the observer."""
-		self.obs.remove(obs)
-		
-	def update(self, arg):
-		"""Trigger each of the observer's update() to be called."""
-		for o in self.obs:
-			o.update(self, arg)
-
-class Cell():
-	"""A cell in a Battleship Grid. Keeps track of the ship (if it
-	contains one), the index in the ship's name, whether it has been hit
-	and its position in the grid it is a part of."""
-	def __init__(self, grid, x, y):
-		self.grid = grid
-		self.ship = None
-		self.idx = 0
-		self.scorched = False
-		self.x = x
-		self.y = y
-		
-	def placeShip(self, ship, vert):
-		"""Place a ship in the Grid starting on the position of this Cell."""
-		return self.grid.placeShip(ship, self.x, self.y, vert)
-		
-	def fireAt(self):
-		"""Fire a missile at this Cell, updates the Ship's health (if 
-		there is one here) and returns whether this cell hasn't been
-		scorched already."""
-		if(self.scorched):
-			return False
-			
-		if(self.ship != None):
-			self.ship.scorch()
-			
-		self.scorched = True
-		self.grid.update(self)
-		return True
-		
-	def __str__(self):
-		"""Is a single space when there is no Ship here. Otherwise the
-		letter in the Ship's name that corresponds to the index of this
-		Cell."""
-		return str(self.ship)[self.idx] if self.ship != None else " "
-
-class Grid(Observable):
-	"""A Battleship Grid. Contains a rows x cols matrix of Cells."""
-	def __init__(self, rows, cols):
-		super(Grid, self).__init__()
-		
-		self.rows = rows
-		self.cols = cols
-		self.obs = []
-		self.matrix = [[Cell(self, i, j) for i in range(cols)] for j in range(rows)]
-	
-	def placeShip(self, ship, x, y, vert):
-		"""Place a Ship in the Grid starting at position x, y. Will
-		place horizontally unless vert is True. Returns whether the Ship
-		has been placed successfully."""
-		if(vert):
-			ship.w = ship.length
-			ship.h = 1
-		else:
-			ship.w = 1
-			ship.h = ship.length
-		
-		# Check bounds
-		if(x < 0 or x + ship.w > self.cols or y < 0 or y + ship.h > self.rows):
-			return False
-			
-		# Check for overlap
-		for row in range(y, y + ship.h):
-			for col in range(x, x + ship.w):
-				if(self.matrix[row][col].ship != None):
-					return False
-		
-		# Place in Cells
-		for row in range(y, y + ship.h):
-			for col in range(x, x + ship.w):
-				ship.x = x
-				ship.y = y
-				
-				cell = self.matrix[row][col]
-				cell.ship = ship
-				cell.idx = col - ship.x + row - ship.y
-				cell.scorched = False
-				
-		# Tell the Ship it's been placed
-		ship.place()
-		self.update(ship)
-		return True
-		
-	def fireAt(self, x, y):
-		"""Fire a missile at the cell at x, y. Returns False if out of
-		bounds, otherwise the value of Cell.fireAt()."""
-		if(x < 0 or x >= self.cols or y < 0 or y >= self.rows):
-			return False
-			
-		cell = self.matrix[y][x]
-		
-		return cell.fireAt()
-
-class Ship(Observable):
-	"""A Ship has a name. When it is placed in a Grid it is spread over
-	consecutive cells, each cell knows the entire ship and the index in
-	the name of the ship that it is to display. Also keeps track of the
-	number of hits it has taken. Orientation is determined by width and
-	height, it is (by design) theoretically possible to have Ships that 
-	are wider than 1 Cell."""
-	def __init__(self, name):
-		super(Ship, self).__init__()
-		
-		self.length = len(name)
-		self.w = 1 # translate orientation into width / height
-		self.h = self.length
-		self.x = 0 # from top-left (regardless of orientation)
-		self.y = 0
-		self.placed = False
-		self.text = name
-		self.health = self.length
-		
-	def place(self):
-		"""Tell this Ship it's been placed."""
-		self.placed = True
-		self.update(self)
-		
-	def scorch(self):
-		"""Tell the Ship it's taken a hit, don't call this if it's
-		already sunk. Returns whether it has any health left."""
-		self.health -= 1
-		
-		return self.health != 0	
-
-	def __str__(self):
-		return self.text
+from model import *
+from ai import *
 
 class ShipButton(QtGui.QPushButton):
 	"""Selects a Ship for placement in the user-grid."""
@@ -238,95 +95,6 @@ class ButtonGrid(QtGui.QWidget):
 		for btn in self.buttons:
 			self.grid.addObs(btn)
 			self.layout.addWidget(btn, btn.cell.x, btn.cell.y)
-			
-class DumbAI():
-	"""Artificial: yes. Intelligent: not so much."""
-	def __init__(self, bs):
-		self.bs = bs
-		self.ships = []
-		
-		self.makeShips()
-		
-	def makeShips(self):
-		"""Construct my ships."""
-		for l in self.bs.WORDS:
-			self.ships.append(Ship(l))
-		
-	def placeShips(self):
-		"""Place my ships."""
-		shipsToPlace = len(self.ships)
-		while(shipsToPlace > 0):
-			x = random.randint(0, self.bs.COLS)
-			y = random.randint(0, self.bs.ROWS)
-			vert = random.randint(0, 1) == 1
-			
-			if(self.bs.targetGrid.placeShip(self.ships[shipsToPlace - 1], x, y, vert)):
-				shipsToPlace -= 1
-				
-	def randomCell(self):
-		x = random.randint(0, self.bs.COLS - 1)
-		y = random.randint(0, self.bs.ROWS - 1)
-		
-		return self.bs.userGrid.matrix[y][x]
-				
-	def fire(self):
-		"""Fire at the user. Poor user..."""
-		cell = self.randomCell()
-		
-		while(not cell.fireAt()):
-			cell = self.randomCell()
-			
-		return cell
-			
-class SmartAI(DumbAI):
-	"""We'll see about that."""
-	def __init__(self, bs):
-		super(SmartAI, self).__init__(bs)
-		self.lastCell = None
-		
-	def placeShips(self):
-		super(SmartAI, self).placeShips()
-		print("I'm smart!")
-		
-	def fire(self):
-		"""Slightly smarter than DumbAI: remember the cell last fired
-		at if that was a hit and fire around it. Otherwise fire at
-		random."""
-		if(self.lastCell == None):
-			cell = super(SmartAI, self).fire()
-			
-			# We just hit a Ship, but not sunk it
-			if(cell.ship != None and cell.ship.health > 0):
-				self.lastCell = cell
-		else:
-			candidates = []
-			x = self.lastCell.x
-			y = self.lastCell.y
-			if(x - 1 >= 0):
-				candidates.append(self.bs.userGrid.matrix[y][x - 1])
-			if(x + 1 < self.bs.userGrid.cols - 1):
-				candidates.append(self.bs.userGrid.matrix[y][x + 1])
-			if(y - 1 >= 0):
-				candidates.append(self.bs.userGrid.matrix[y - 1][x])
-			if(y + 1 < self.bs.userGrid.rows - 1):
-				candidates.append(self.bs.userGrid.matrix[y + 1][x])
-				
-			# filter out scorched ones
-			candidates = [cell for cell in candidates if not cell.scorched]
-			
-			# no smart candidates: just fire random again
-			if(len(candidates) == 0):
-				self.lastCell = None
-				return self.fire()
-				
-			# pick one at random
-			cell = random.choice(candidates)
-			cell.fireAt()
-			
-			# we know the cell is scorched
-			if(cell.ship != None and cell.ship.health > 0):
-				self.lastCell = cell
-			# otherwise leave it at the previous and try another one next turn
 
 class Battleship(QtGui.QWidget):
 	"""The main window & controller for the game (which you just lost!)."""
@@ -359,6 +127,12 @@ class Battleship(QtGui.QWidget):
 		
 		self.makeShips()
 		self.initGUI()
+		
+		self.show()
+		screen = QtGui.QDesktopWidget().screenGeometry()
+		w = self.width()
+		h = self.height()
+		self.setGeometry(screen.width() / 2 - w / 2, screen.height() / 2 - h / 2, w, h)
 		
 	def makeShips(self):
 		"""Make the user's Ships."""
@@ -408,15 +182,13 @@ class Battleship(QtGui.QWidget):
 		uiGrid.addWidget(self.targetBtnGrid, 3, 1)
 		uiGrid.addWidget(self.scoreWidget, 3, 2)
 		
-		self.show()
+		self.setWindowTitle("Battleshipses")
 		
 	def turn(self):
 		"""Either have the AI fire, or the user."""
 		if(self.aisTurn):
 			self.aisTurn = False
 			self.ai.fire()
-		else:
-			self.msgLabel.setText("Fire your missiles down there ↓")
 			
 	def userFire(self, cell):
 		"""User has clicked a GridButton."""
@@ -439,8 +211,12 @@ class Battleship(QtGui.QWidget):
 			self.orientBtn.setEnabled(False)
 			self.aiBtn.setEnabled(False)
 			
-			self.ai = SmartAI(self) if self.smartAI else DumbAI(self)
+			# save some line width
+			params = (self, self.userGrid, self.targetGrid)
+			self.ai = SmartAI(*params) if self.smartAI else DumbAI(*params)
 			self.ai.placeShips()
+			
+			self.msgLabel.setText("Fire your missiles down there ↓")
 			self.gameMode = self.MODE_FIRING
 	
 	def livingShips(self, ships):
@@ -495,7 +271,7 @@ class Battleship(QtGui.QWidget):
 		
 	def switchAI(self):
 		self.smartAI = not self.smartAI
-		self.aiBtn.setText("AI: Smart" if self.smartAI else "AI: Dumb")
+		self.aiBtn.setText("AI: Less dumb" if self.smartAI else "AI: Dumb")
 		
 def main():
 	app = QtGui.QApplication(sys.argv)
